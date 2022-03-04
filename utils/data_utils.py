@@ -1,6 +1,7 @@
 import logging
 
 import torch
+import numpy as np
 
 from torchvision import transforms, datasets
 from torch.utils.data import DataLoader, RandomSampler, DistributedSampler, SequentialSampler
@@ -24,25 +25,62 @@ def get_loader(args):
         transforms.Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5]),
     ])
 
-    if args.dataset == "cifar10":
-        trainset = datasets.CIFAR10(root="./data",
-                                    train=True,
-                                    download=True,
-                                    transform=transform_train)
-        testset = datasets.CIFAR10(root="./data",
-                                   train=False,
-                                   download=True,
-                                   transform=transform_test) if args.local_rank in [-1, 0] else None
+    # if args.dataset == "cifar10":
+    #     trainset = datasets.CIFAR10(root="./data",
+    #                                 train=True,
+    #                                 download=True,
+    #                                 transform=transform_train)
+    #     testset = datasets.CIFAR10(root="./data",
+    #                                train=False,
+    #                                download=True,
+    #                                transform=transform_test) if args.local_rank in [-1, 0] else None
+    #
+    # else:
+    #     trainset = datasets.CIFAR100(root="./data",
+    #                                  train=True,
+    #                                  download=True,
+    #                                  transform=transform_train)
+    #     testset = datasets.CIFAR100(root="./data",
+    #                                 train=False,
+    #                                 download=True,
+    #                                 transform=transform_test) if args.local_rank in [-1, 0] else None
 
-    else:
-        trainset = datasets.CIFAR100(root="./data",
-                                     train=True,
-                                     download=True,
-                                     transform=transform_train)
-        testset = datasets.CIFAR100(root="./data",
-                                    train=False,
-                                    download=True,
-                                    transform=transform_test) if args.local_rank in [-1, 0] else None
+    #Train_Set
+    cifar10_dataset = datasets.CIFAR10(root="./data", train=True, transform=transform_train, download=True)
+    cifar100_dataset = datasets.CIFAR100(root="./data", train=True, transform=transform_train, download=True)
+    sub_masks = []
+    cifar10_targets = np.array(cifar10_dataset.targets)
+    sub_size = 500
+    cifar10_class_count = 10
+    for i in range(cifar10_class_count):
+        mask = np.random.choice(np.arange(len(cifar10_targets))[cifar10_targets == i], size=sub_size, replace=False)
+        sub_masks.append(mask)
+    sub_mask = np.sort(np.stack(sub_masks).reshape(-1))
+    cifar10_dataset.targets = cifar10_targets[sub_mask]
+    cifar10_dataset.data = cifar10_dataset.data[sub_mask]
+    cifar100_dataset.data = np.concatenate([cifar10_dataset.data, cifar100_dataset.data])
+    cifar100_dataset.targets = np.array(cifar100_dataset.targets) + cifar10_class_count
+    cifar100_dataset.targets = np.concatenate([cifar10_dataset.targets, cifar100_dataset.targets])
+    trainset = cifar100_dataset
+
+    #Test Set
+    cifar10_dataset = datasets.CIFAR10(root="./data", train=False, transform=transform_test, download=True)
+    cifar100_dataset = datasets.CIFAR100(root="./data", train=False, transform=transform_test, download=True)
+    sub_masks = []
+    cifar10_targets = np.array(cifar10_dataset.targets)
+    sub_size = 100
+    cifar10_class_count = 10
+    for i in range(cifar10_class_count):
+        mask = np.random.choice(np.arange(len(cifar10_targets))[cifar10_targets == i], size=sub_size, replace=False)
+        sub_masks.append(mask)
+    sub_mask = np.sort(np.stack(sub_masks).reshape(-1))
+    cifar10_dataset.targets = cifar10_targets[sub_mask]
+    cifar10_dataset.data = cifar10_dataset.data[sub_mask]
+    cifar100_dataset.data = np.concatenate([cifar10_dataset.data, cifar100_dataset.data])
+    cifar100_dataset.targets = np.array(cifar100_dataset.targets) + cifar10_class_count
+    cifar100_dataset.targets = np.concatenate([cifar10_dataset.targets, cifar100_dataset.targets])
+    testset = cifar100_dataset
+
     if args.local_rank == 0:
         torch.distributed.barrier()
 
